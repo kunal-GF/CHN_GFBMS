@@ -6,13 +6,13 @@
  */ 
 
 
-#define FOSC 8000000 // Clock Speed
+#define FOSC 16000000 // Clock Speed
 #define BAUD 9600
 #define MYUBRR FOSC/16/BAUD-1
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
-
+#include "uart.h"
 
 
 
@@ -24,6 +24,6 @@ int main(void)
 	while(1)
 	{
 		_delay_ms(1000);
-		USART_Transmit(raw_data);
+		USART_Transmit('a');
 	}
 }

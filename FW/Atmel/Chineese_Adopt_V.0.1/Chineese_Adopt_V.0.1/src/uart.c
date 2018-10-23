@@ -4,10 +4,14 @@
  * Created: 10/23/2018 1:17:14 PM
  *  Author: User
  */ 
+#define FOSC 8000000 // Clock Speed
+#define BAUD 9600
+#define MYUBRR FOSC/16/BAUD-1
+#include <avr/io.h>
+#include "uart.h"
 
 void USART_Init( unsigned int ubrr)
 {
-	cli();
 	/*Set baud rate */
 	UBRR0H = (unsigned char)(ubrr>>8);
 	UBRR0L = (unsigned char)ubrr;
@@ -15,7 +19,6 @@ void USART_Init( unsigned int ubrr)
 	UCSR0B = (1<<RXEN0)|(1<<TXEN0);
 	/* Set frame format: 8data, 2stop bit */
 	UCSR0C = (1<<USBS0)|(3<<UCSZ00);
-	sei();
 }
 
 void USART_Transmit( unsigned char data )
