@@ -1,0 +1,5 @@
+*Page Update/Referesh issue.
+*Mosfet ON/OFF status incomplete.
+*SOC callibration with dial.
+*current callibration.
+*
