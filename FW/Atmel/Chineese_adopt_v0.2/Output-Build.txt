@@ -1,0 +1,22 @@
+﻿------ Build started: Project: Chineese_adopt_v0.2, Configuration: Release AVR ------
+Build started.
+Project "Chineese_adopt_v0.2.cproj" (default targets):
+Target "PreBuildEvent" skipped, due to false condition; ('$(PreBuildEvent)'!='') was evaluated as (''!='').
+Target "CoreBuild" in file "C:\Program Files (x86)\Atmel\Studio\7.0\Vs\Compiler.targets" from project "E:\CHN_GFBMS\FW\Atmel\Chineese_adopt_v0.2\Chineese_adopt_v0.2\Chineese_adopt_v0.2.cproj" (target "Build" depends on it):
+	Task "RunCompilerTask"
+		Shell Utils Path C:\Program Files (x86)\Atmel\Studio\7.0\shellUtils
+		C:\Program Files (x86)\Atmel\Studio\7.0\shellUtils\make.exe all --jobs 4 --output-sync 
+		make: Nothing to be done for 'all'.
+	Done executing task "RunCompilerTask".
+	Task "RunOutputFileVerifyTask"
+				Program Memory Usage 	:	514 bytes   1.6 % Full
+				Data Memory Usage 		:	25 bytes   1.2 % Full
+	Done executing task "RunOutputFileVerifyTask".
+Done building target "CoreBuild" in project "Chineese_adopt_v0.2.cproj".
+Target "PostBuildEvent" skipped, due to false condition; ('$(PostBuildEvent)' != '') was evaluated as ('' != '').
+Target "Build" in file "C:\Program Files (x86)\Atmel\Studio\7.0\Vs\Avr.common.targets" from project "E:\CHN_GFBMS\FW\Atmel\Chineese_adopt_v0.2\Chineese_adopt_v0.2\Chineese_adopt_v0.2.cproj" (entry point):
+Done building target "Build" in project "Chineese_adopt_v0.2.cproj".
+Done building project "Chineese_adopt_v0.2.cproj".
+
+Build succeeded.
+========== Build: 1 succeeded or up-to-date, 0 failed, 0 skipped ==========
