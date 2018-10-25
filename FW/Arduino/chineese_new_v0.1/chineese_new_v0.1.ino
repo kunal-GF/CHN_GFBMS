@@ -76,9 +76,13 @@
 
 /*************************************************Communication command no for processing************************/
 /** Communication Command processing Error */
-#define COMM_CMD_ERROR        1
-#define COMM_CMD_LOG          2
-#define COMM_CMD_UPDATE       3
+#define COMM_CMD_ERROR        0
+/** Communications is Still receiving data or waiting */
+#define COMM_CMD_BUSY         1
+/** Communications Command to Read ADC Instantaneously */
+#define COMM_CMD_ADC          2
+//#define COMM_CMD_LOG          2
+//#define COMM_CMD_UPDATE       3
 
 
 
@@ -86,7 +90,7 @@
 /**Size for cells voltage command*/
 #define SZ_CMD_LOG             3
 #define SZ_CMD_UPDATE          6
-
+#define SZ_CMD_ADC 3
 
 
       
@@ -175,14 +179,17 @@
 #define FADD_OP_CON_L         0x51
 #define FADD_OP_COUNT         0x52
 
-
+#define FOSC 16000000 // Clock Speed
+#define BAUD 9600
+#define MYUBRR FOSC/16/BAUD-1
 
 /**Incude header files here*/
 #include <SoftI2CMaster.h>
 
 
-const char cmd_log[SZ_CMD_LOG]               = "log";
-const char cmd_update[SZ_CMD_UPDATE]         = "update";
+//const char cmd_log[SZ_CMD_LOG]               = "log";
+//const char cmd_update[SZ_CMD_UPDATE]         = "update";
+const char cmd_adc[SZ_CMD_ADC] = "adc";
 /********************************************************Function's declaration************************************************/
 /**Function to merge two 8 bit data into one single 16_bit data*/
 uint16_t merge_16(uint8_t h_16, uint8_t l_16);
@@ -224,8 +231,16 @@ unsigned char CRC8(unsigned char *ptr, unsigned char len,unsigned char key);
 uint8_t str2hex(char s);
 /**Function to calculate convert string to hex*/
 void i2c_log(void);
-
+/* Communications Processing Loop */
 uint8_t Comm_loop(void);
+void USART_Init( unsigned int ubrr);
+void USART_Transmit( unsigned char data );
+unsigned char USART_Receive( void );
+void TU_putHex(uint8_t data);
+/* Command Processor with Line Ending '\r\n' termination */
+uint8_t TU_getln(uint8_t *arr, uint8_t max_sz);
+uint8_t UART2_ReceiveData8(void);
+uint8_t TU_getc(uint8_t *data);
 
 /******************************************************Variable declaration*******************************************/
 volatile uint8_t comm_buffer[COMM_MAX_BUFFER_SZ];
@@ -236,6 +251,11 @@ volatile uint8_t afe_isr_reg[235], temp_read=0;
 volatile int isr_count=0;
 volatile bool erom_cng=1;
 volatile uint8_t cd=0x00;
+/** Exposed size of the Communication Buffer */
+volatile uint8_t comm_sz;
+uint8_t* comm_ptr_next;
+/** Exposed size of the Command Processed */
+uint8_t comm_cmd_sz;
 /************************************************************END******************************************************/
 
 /*Interrupt service routine*/
@@ -251,7 +271,7 @@ ISR(PCINT1_vect)
 /*Setup function to be executed at once*/
 void setup() 
 {
-  Serial.begin(9600);
+  USART_Init(MYUBRR);
   pinMode(8,OUTPUT);
   pinMode(14,OUTPUT);
   digitalWrite(8,LOW);
@@ -279,7 +299,7 @@ void setup()
   i2c_WriteWithCRC(I2C_7BITADDR, UV_TRIP,   0x13);
   i2c_WriteWithCRC(I2C_7BITADDR, CC_CFG,    0x19);
   /*End of default parameters*/
-  Serial.println("Values has been Loaded");
+  //Serial.println("Values has been Loaded");
 }
 
 
@@ -289,118 +309,17 @@ void setup()
 
 void loop()
 {
-   /*Store and process serial buffer*/
- // BL_Process(PROCESS_SR_BUFF(READ_SR_BUFF()));
+/*
   if(isr_count > 4)
     {
       measure();
-      Serial.println("Read Sucess");
+      //Serial.println("Read Sucess");
       isr_count=0;
     }
-
-    serial_command = READ_SR_BUFF();
-    //Serial.println(serial_command);
-    //delay(1000);
-    if(serial_command > 0)
-    BL_Process(serial_command);
+*/
 }
 
 
-
-
-
-
-
-
-
-
-/** Function to store serial data into the Serial buffer*/
-uint8_t READ_SR_BUFF(void)
-{
-    volatile uint8_t i=0;
-    clear_Buffer();
-    while(Serial.available()>0)
-    {
-     
-      comm_buffer[i] = Serial.read();
-      
-      if(comm_buffer[i] == '@')
-        return process();
-        
-      i++;
-    }
-    return 0;
-}
-
-
-
-
-
-/* Business logic process loop */
-uint8_t BL_Process(uint8_t serial_cmd)
-{
-  do{
-
-    Serial.println(serial_cmd);
-    if(serial_cmd == COMM_CMD_ERROR)
-    {
-      Serial.println("Unknown Command Received ");
-      break;
-    }
-    
-    if(serial_cmd == COMM_CMD_LOG)
-    {
-      i2c_log();
-      break;
-    }
-
-    if(serial_cmd == COMM_CMD_UPDATE)
-    {
-      Serial.println("sucess");
-      break;
-    }
-  }while(0);
-
-  return 0;
-}
-
-
-
-
-
-uint8_t process(void)
-{
-  volatile uint8_t ret = COMM_CMD_ERROR;
-  do
-  {
-      if(strncmp(cmd_log, comm_buffer, SZ_CMD_LOG) == 0)
-      {
-          ret = COMM_CMD_LOG;
-          clear_Buffer();
-          break;
-      }  
-  
-   }while(0);
-  return ret;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*Function to write hex values to the afe with CRC8*/
 void i2c_WriteWithCRC(uint8_t I2CSlaveAddress, uint8_t Register, uint8_t Data)
 {
   volatile uint8_t DataBuffer[4];
@@ -415,9 +334,7 @@ void i2c_WriteWithCRC(uint8_t I2CSlaveAddress, uint8_t Register, uint8_t Data)
   i2c_write(DataBuffer[3]);
   i2c_stop();
 }
-/*End of function*/
 
-/*Function to calculate CRC8*/
 unsigned char CRC8(unsigned char *ptr, unsigned char len,unsigned char key)
 {
   volatile unsigned char i;
@@ -441,748 +358,19 @@ unsigned char CRC8(unsigned char *ptr, unsigned char len,unsigned char key)
   }
   return(crc);
 }
-/*End of function*/
-
-uint8_t str2hex(char s)
-{
-  uint8_t ret = 0;
-  
-  if(s >= '0' && s <= '9')
-  {
-    ret = s - '0';
-  }
-  else if(s >= 'A' && s <= 'F')
-  {
-    ret = s - 'A' + 10;
-  }
-  else if(s >= 'a' && s <= 'f')
-  {
-    ret = s - 'a' + 10;
-  }
-  else
-  {
-    //error = 1; // Indicate Processing Error
-  }
-  return ret & 0x0F;
-}
-
 
 void i2c_log(void)
-{  
-  for(int g=0; g<234; g++)
-  {
-    Serial.print(afe_isr_reg[g],HEX);
-  }
-}
-
-
-void clear_Buffer(void)
 {
-  for(volatile int j=0; j<=200; j++)
+  cli();  
+  for(volatile int g=0; g<235; g++)
   {
-    comm_buffer[j] = 0;
+    Serial.print(afe_isr_reg[g], HEX);
   }
-}
-
-
-
-void error(void)
-{
-  Serial.println("ERROR");
-}
-
-
-
-void measure(void)
-{
-  cli(); 
-  temp_read++;
-  
-  if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-
-    i2c_write(VC1_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[0] = i2c_read(true);
-    
-
-    afe_isr_reg[1] = ':';
-  
-    i2c_write(VC1_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[2] = i2c_read(true);
-    i2c_stop();
-
-    
-    afe_isr_reg[3] = ':';
-    
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC2_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[4] = i2c_read(true);
-   
-
-    afe_isr_reg[5] = ':';
-    
-    i2c_write(VC2_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[6] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[7] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC3_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[8] = i2c_read(true);
-    
-
-    afe_isr_reg[9] = ':';
-  
-    i2c_write(VC3_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[10] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[11] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC4_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[12] = i2c_read(true);
-   
-
-    afe_isr_reg[13] = ':';
-  
-    i2c_write(VC4_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[14] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[15] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC5_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[16] = i2c_read(true);
-    
-
-    afe_isr_reg[17] = ':';
-  
-    i2c_write(VC5_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[18] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[19] = ':';
-   
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC6_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[20] = i2c_read(true);
-   
-
-    afe_isr_reg[21] = ':';
-  
-    i2c_write(VC6_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[22] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[23] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC7_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[24] = i2c_read(true);
-    
-
-    afe_isr_reg[25] = ':';
-  
-    i2c_write(VC7_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[26] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[27] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC8_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[28] = i2c_read(true);
-   
-
-    afe_isr_reg[29] = ':';
-  
-    i2c_write(VC8_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[30] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[31] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC9_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[32] = i2c_read(true);
-    
-
-    afe_isr_reg[33] = ':';
-  
-    i2c_write(VC9_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[34] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[35] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC10_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[36] = i2c_read(true);
-   
-
-    afe_isr_reg[37] = ':';
-  
-    i2c_write(VC10_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[38] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[39] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC11_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[40] = i2c_read(true);
-    
-
-    afe_isr_reg[41] = ':';
-  
-    i2c_write(VC11_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[42] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[43] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC12_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[44] = i2c_read(true);
-    
-
-    afe_isr_reg[45] = ':';
-  
-    i2c_write(VC12_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[46] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[47] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    i2c_write(VC13_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[48] = i2c_read(true);
-    
-
-    afe_isr_reg[49] = ':';
-  
-    i2c_write(VC13_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[50] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[51] = ':';
-    
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC14_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[52] = i2c_read(true);
-   
-
-    afe_isr_reg[53] = ':';
-  
-    i2c_write(VC14_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[54] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[55] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VC15_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[56] = i2c_read(true);
-   
-
-    afe_isr_reg[57] = ':';
-  
-    i2c_write(VC15_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[58] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[59] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(VP_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[60] = i2c_read(true);
-    
-
-    afe_isr_reg[61] = ':';
-  
-    i2c_write(VP_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[62] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[63] = ':';
-
-     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-  
-    i2c_write(CC_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[64] = i2c_read(true);
-    
-
-    afe_isr_reg[65] = ':';
-  
-    i2c_write(CC_HI);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[66] = i2c_read(true);
-    i2c_stop();
-
-     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-
-    afe_isr_reg[67] = ':';
-
-    i2c_write(OV_TRIP);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[68] = i2c_read(true);
-
-
-    afe_isr_reg[69] = ':';
-
-    i2c_write(OV_TRIP);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[70] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[71] = ':';
-
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-
-    i2c_write(PROTECT1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[72] = i2c_read(true);
-    
-
-    afe_isr_reg[73] = ':';
-
-    i2c_write(PROTECT1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[74] = i2c_read(true);
-    
-
-    afe_isr_reg[75] = ':';
-
-    i2c_write(PROTECT1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[76] = i2c_read(true);
-   
-
-    afe_isr_reg[77] = ':';
-
-    
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-    i2c_write(SYS_CTRL1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[78] = i2c_read(true);
-
-    afe_isr_reg[79] = ':';
-
-    i2c_write(SYS_CTRL1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[80] = i2c_read(true);
-    i2c_stop();
-
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    afe_isr_reg[81] = ':';
-
-    i2c_write(CELLBAL1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[82] = i2c_read(true);
-    
-
-    afe_isr_reg[83] = ':';
-
-    i2c_write(CELLBAL1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[84] = i2c_read(true);
-    
-
-    afe_isr_reg[85] = ':';
-
-    i2c_write(CELLBAL1);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[86] = i2c_read(true);
-    i2c_stop();
-
-    afe_isr_reg[87] = ':';
-
-    if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-
-    i2c_write(SYS_STAT);
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    afe_isr_reg[88] = i2c_read(true);
-    i2c_stop();
-    
-   if(erom_cng)
-   {
-    /**Debug Statement*/
-    afe_isr_reg[89] = ':';
-    afe_isr_reg[90] = eeprom_read_byte(FADD_SYS_STATWORD_HI);
-    afe_isr_reg[91] = ':';
-    afe_isr_reg[92] = eeprom_read_byte(FADD_SYS_STATWORD_LO);
-    afe_isr_reg[93] = ':';
-    afe_isr_reg[94] = eeprom_read_byte(FADD_C_OV_CON_H);
-    afe_isr_reg[95] = ':';
-    afe_isr_reg[96] = eeprom_read_byte(FADD_C_OV_CON_L);
-    afe_isr_reg[97] = ':';
-    afe_isr_reg[98] = eeprom_read_byte(FADD_C_OV_COUNT);   
-    afe_isr_reg[99] = ':';
-    afe_isr_reg[100] = eeprom_read_byte(FADD_C_UV_CON_H);
-    afe_isr_reg[101] = ':';
-    afe_isr_reg[102] = eeprom_read_byte(FADD_C_UV_CON_L);
-    afe_isr_reg[103] = ':';
-    afe_isr_reg[104] = eeprom_read_byte(FADD_C_UV_COUNT);
-    afe_isr_reg[105] = ':';
-    afe_isr_reg[106] = eeprom_read_byte(FADD_P_OV_TRIP_H);
-    afe_isr_reg[107] = ':';
-    afe_isr_reg[108] = eeprom_read_byte(FADD_P_OV_TRIP_L);
-    afe_isr_reg[109] = ':';
-    afe_isr_reg[110] = eeprom_read_byte(FADD_P_OV_CON_H);
-    afe_isr_reg[111] = ':';
-    afe_isr_reg[112] = eeprom_read_byte(FADD_P_OV_CON_L);
-    afe_isr_reg[113] = ':';
-    afe_isr_reg[114] = eeprom_read_byte(FADD_P_OV_COUNT);
-    afe_isr_reg[115] = ':';
-    afe_isr_reg[116] = eeprom_read_byte(FADD_P_UV_TRIP_H);
-    afe_isr_reg[117] = ':';
-    afe_isr_reg[118] = eeprom_read_byte(FADD_P_UV_TRIP_L);
-    afe_isr_reg[119] = ':';
-    afe_isr_reg[120] = eeprom_read_byte(FADD_P_UV_CON_H);
-    afe_isr_reg[121] = ':';
-    afe_isr_reg[122] = eeprom_read_byte(FADD_P_UV_CON_L);
-    afe_isr_reg[123] = ':';
-    afe_isr_reg[124] = eeprom_read_byte(FADD_P_UV_COUNT);
-    afe_isr_reg[125] = ':';
-    afe_isr_reg[126] = eeprom_read_byte(FADD_C_OT_TRIP_H);
-    afe_isr_reg[127] = ':';
-    afe_isr_reg[128] = eeprom_read_byte(FADD_C_OT_TRIP_L);
-    afe_isr_reg[129] = ':';
-    afe_isr_reg[130] = eeprom_read_byte(FADD_C_OT_CON_H);
-    afe_isr_reg[131] = ':';
-    afe_isr_reg[132] = eeprom_read_byte(FADD_C_OT_CON_L);
-    afe_isr_reg[133] = ':';
-    afe_isr_reg[134] = eeprom_read_byte(FADD_C_OT_COUNT);
-    afe_isr_reg[135] = ':';
-    afe_isr_reg[136] = eeprom_read_byte(FADD_C_UT_TRIP_H);
-    afe_isr_reg[137] = ':';
-    afe_isr_reg[138] = eeprom_read_byte(FADD_C_UT_TRIP_L);
-    afe_isr_reg[139] = ':';
-    afe_isr_reg[140] = eeprom_read_byte(FADD_C_UT_CON_H);
-    afe_isr_reg[141] = ':';
-    afe_isr_reg[142] = eeprom_read_byte(FADD_C_UT_CON_L);
-    afe_isr_reg[143] = ':';
-    afe_isr_reg[144] = eeprom_read_byte(FADD_C_UT_COUNT);
-    afe_isr_reg[145] = ':';
-    afe_isr_reg[146] = eeprom_read_byte(FADD_D_OT_TRIP_H);
-    afe_isr_reg[147] = ':';
-    afe_isr_reg[148] = eeprom_read_byte(FADD_D_OT_TRIP_L);
-    afe_isr_reg[149] = ':';
-    afe_isr_reg[150] = eeprom_read_byte(FADD_D_OT_CON_H);
-    afe_isr_reg[151] = ':';
-    afe_isr_reg[152] = eeprom_read_byte(FADD_D_OT_CON_L);
-    afe_isr_reg[153] = ':';
-    afe_isr_reg[154] = eeprom_read_byte(FADD_D_OT_COUNT);
-    afe_isr_reg[155] = ':';
-    afe_isr_reg[156] = eeprom_read_byte(FADD_D_UT_TRIP_H);
-    afe_isr_reg[157] = ':';
-    afe_isr_reg[158] = eeprom_read_byte(FADD_D_UT_TRIP_L);
-    afe_isr_reg[159] = ':';
-    afe_isr_reg[160] = eeprom_read_byte(FADD_D_UT_CON_H);
-    afe_isr_reg[161] = ':';
-    afe_isr_reg[162] = eeprom_read_byte(FADD_D_UT_CON_L);
-    afe_isr_reg[163] = ':';
-    afe_isr_reg[164] = eeprom_read_byte(FADD_D_UT_COUNT);
-    afe_isr_reg[165] = ':';
-    afe_isr_reg[166] = eeprom_read_byte(FADD_OCC_TRIP_H);
-    afe_isr_reg[167] = ':';
-    afe_isr_reg[168] = eeprom_read_byte(FADD_OCC_TRIP_L);
-    afe_isr_reg[169] = ':';
-    afe_isr_reg[170] = eeprom_read_byte(FADD_OCC_CON_H);
-    afe_isr_reg[171] = ':';
-    afe_isr_reg[172] = eeprom_read_byte(FADD_OCC_CON_L);
-    afe_isr_reg[173] = ':';
-    afe_isr_reg[174] = eeprom_read_byte(FADD_OCC_COUNT);
-    afe_isr_reg[175] = ':';
-    afe_isr_reg[176] = eeprom_read_byte(FADD_OCD_CON_H);
-    afe_isr_reg[177] = ':';
-    afe_isr_reg[178] = eeprom_read_byte(FADD_OCD_CON_L);
-    afe_isr_reg[179] = ':';
-    afe_isr_reg[180] = eeprom_read_byte(FADD_OCD_COUNT);
-    afe_isr_reg[181] = ':';
-    afe_isr_reg[182] = eeprom_read_byte(FADD_P_OT_TRIP_H);
-    afe_isr_reg[183] = ':';
-    afe_isr_reg[184] = eeprom_read_byte(FADD_P_OT_TRIP_L);
-    afe_isr_reg[185] = ':';
-    afe_isr_reg[186] = eeprom_read_byte(FADD_P_OT_CON_H);
-    afe_isr_reg[187] = ':';
-    afe_isr_reg[188] = eeprom_read_byte(FADD_P_OT_CON_L);
-    afe_isr_reg[189] = ':';
-    afe_isr_reg[190] = eeprom_read_byte(FADD_P_OT_COUNT);
-    afe_isr_reg[191] = ':';
-    afe_isr_reg[192] = eeprom_read_byte(FADD_P_UT_TRIP_H);
-    afe_isr_reg[193] = ':';
-    afe_isr_reg[194] = eeprom_read_byte(FADD_P_UT_TRIP_L);
-    afe_isr_reg[195] = ':';
-    afe_isr_reg[196] = eeprom_read_byte(FADD_P_UT_CON_H);
-    afe_isr_reg[197] = ':';
-    afe_isr_reg[198] = eeprom_read_byte(FADD_P_UT_CON_L);
-    afe_isr_reg[199] = ':';
-    afe_isr_reg[200] = eeprom_read_byte(FADD_P_UT_COUNT);
-    afe_isr_reg[201] = ':';
-    afe_isr_reg[202] = eeprom_read_byte(FADD_SCC_TRIP_H);
-    afe_isr_reg[203] = ':';
-    afe_isr_reg[204] = eeprom_read_byte(FADD_SCC_TRIP_L);
-    afe_isr_reg[205] = ':';
-    afe_isr_reg[206] = eeprom_read_byte(FADD_SCC_CON_H);
-    afe_isr_reg[207] = ':';
-    afe_isr_reg[208] = eeprom_read_byte(FADD_SCC_CON_L);
-    afe_isr_reg[209] = ':';
-    afe_isr_reg[210] = eeprom_read_byte(FADD_SCC_COUNT);
-    afe_isr_reg[211] = ':';
-    afe_isr_reg[212] = eeprom_read_byte(FADD_SCD_CON_H);
-    afe_isr_reg[213] = ':';
-    afe_isr_reg[214] = eeprom_read_byte(FADD_SCD_CON_L);
-    afe_isr_reg[215] = ':';
-    afe_isr_reg[216] = eeprom_read_byte(FADD_SCD_COUNT);
-    afe_isr_reg[217] = ':';
-    afe_isr_reg[218] = eeprom_read_byte(FADD_OP_TRIP_H);
-    afe_isr_reg[219] = ':';
-    afe_isr_reg[220] = eeprom_read_byte(FADD_OP_TRIP_L);
-    afe_isr_reg[221] = ':';
-    afe_isr_reg[222] = eeprom_read_byte(FADD_OP_CON_H);
-    afe_isr_reg[223] = ':';
-    afe_isr_reg[224] = eeprom_read_byte(FADD_OP_CON_L);
-    afe_isr_reg[225] = ':';
-    afe_isr_reg[226] = eeprom_read_byte(FADD_OP_COUNT);
-    afe_isr_reg[235] = ':';
-    erom_cng = 0;
-    Serial.println("Values Updated from EEPROM to afe_isr[x] buffer");
-   }
-
-  if(temp_read > 5)
-  {
-  afe_isr_reg[227] = ':';
-  if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-  
-  i2c_write(TS1_HI);
-  i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-  afe_isr_reg[228] = i2c_read(true);
- 
-
-  afe_isr_reg[229] = ':';
-  
-  i2c_write(TS1_HI);
-  i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-  afe_isr_reg[230] = i2c_read(true);
-  i2c_stop();
-
-  afe_isr_reg[231] = ':';
-
-  if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-    {
-      /**Debug Statement*/
-      Serial.println("I2C device busy");
-      _delay_ms(1000);
-      return;
-    }
-    
-  i2c_write(TS2_HI);
-  i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-  afe_isr_reg[232] = i2c_read(true);
-
-  afe_isr_reg[233] = ':';
-
-  i2c_write(TS2_HI);
-  i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-  afe_isr_reg[234] = i2c_read(true);
-  i2c_stop();
-  temp_read=0;
-  }
+  Serial.print('\r');
   sei();
   i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x80);
-  //Serial.println("Read Sucess");
 }
+
 
 
 
