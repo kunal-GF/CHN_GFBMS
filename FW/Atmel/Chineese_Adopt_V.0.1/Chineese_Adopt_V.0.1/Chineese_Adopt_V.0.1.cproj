@@ -29,7 +29,7 @@
     <eraseonlaunchrule>0</eraseonlaunchrule>
     <EraseKey />
     <avrtool>com.atmel.avrdbg.tool.ispmk2</avrtool>
-    <avrtoolserialnumber>000200206197</avrtoolserialnumber>
+    <avrtoolserialnumber>000200208026</avrtoolserialnumber>
     <avrdeviceexpectedsignature>0x1E950F</avrdeviceexpectedsignature>
     <avrtoolinterface>ISP</avrtoolinterface>
     <avrtoolinterfaceclock>125000</avrtoolinterfaceclock>
@@ -41,7 +41,7 @@
         <InterfaceName>ISP</InterfaceName>
       </ToolOptions>
       <ToolType>com.atmel.avrdbg.tool.ispmk2</ToolType>
-      <ToolNumber>000200206197</ToolNumber>
+      <ToolNumber>000200208026</ToolNumber>
       <ToolName>AVRISP mkII</ToolName>
     </com_atmel_avrdbg_tool_ispmk2>
     <AsfFrameworkConfig>
@@ -138,7 +138,22 @@
     </ToolchainSettings>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="inc\AFE_init.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="inc\I2C_process.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="inc\SoftI2CMaster.h">
+      <SubType>compile</SubType>
+    </Compile>
     <Compile Include="inc\uart.h">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\AFE_init.c">
+      <SubType>compile</SubType>
+    </Compile>
+    <Compile Include="src\I2C_process.c">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="src\main.c">
