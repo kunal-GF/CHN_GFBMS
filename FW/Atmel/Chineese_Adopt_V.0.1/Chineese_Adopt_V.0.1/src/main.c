@@ -3,13 +3,9 @@
  *
  * Created: 10/22/2018 8:24:40 PM
  * Author : #define I2C_TIMEOUT 1000
-#define I2C_PULLUP 1
-#define SDA_PORT PORTD
-#define SDA_PIN 6
-#define SCL_PORT PORTD
-#define SCL_PIN 7
-#define MEMLEN 1
-/**BQ7694003 AFE device address*/
+*/
+
+
 #define SYS_STAT 0x00
 #define CELLBAL1 0x01
 #define CELLBAL2 0x02
@@ -66,33 +62,13 @@
 #define ADCOFFSET 0x51
 #define ADCGAIN2 0x59
 
-#define I2C_7BITADDR 0x08
-#define ADDRLEN 1
-#define CRC_KEY 0x07
-
-#define I2C_TIMEOUT 1000
-#define I2C_PULLUP 1
-#define SDA_PORT PORTD
-#define SDA_PIN 6
-#define SCL_PORT PORTD
-#define SCL_PIN 7
-#define MEMLEN 1
-/**BQ7694003 AFE device address*/
-#define I2C_7BITADDR 0x08
-#define ADDRLEN 1
-#define CRC_KEY 0x07
-
-
-
 
 #define F_CPU 8000000
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include "uart.h"
-#include "SoftI2CMaster.h"
-#include "AFE_init.h"
-
+#include "i2c_bb.h"
 
 
 
@@ -102,25 +78,5 @@
 int main(void)
 {
 	USART_Init(9600);	
-	DDRB |= 0b00000001;
-	DDRC |= 0b00000001;
 	
-	PORTB &= ~(1<<PINB0);
-	PORTC |= 1<<PINC0;
-	while(1)
-	{
-		if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
-		{
-			/**Debug Statement*/
-			TU_puts("I2C device busy");
-			_delay_ms(1000);
-			return;
-		}
-
-		i2c_write(SYS_STAT);
-		i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-		TU_puts(i2c_read(true));
-		i2c_stop();
-		_delay_ms(1000);
-	}
 }

@@ -7,7 +7,7 @@ c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/..
 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_exit.o)
                               C:/Program Files (x86)/Atmel/Studio/7.0/Packs/atmel/ATmega_DFP/1.2.209/gcc/dev/atmega328p/avr5/crtatmega328p.o (exit)
 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_copy_data.o)
-                              src/main.o (__do_copy_data)
+                              src/uart.o (__do_copy_data)
 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_udivmodsi4.o)
                               c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_divmodsi4.o) (__udivmodsi4)
 
@@ -29,14 +29,13 @@ Discarded input sections
  .text          0x00000000        0x0 src/main.o
  .data          0x00000000        0x0 src/main.o
  .bss           0x00000000        0x0 src/main.o
- .text.i2c_init
-                0x00000000       0x1e src/main.o
- .text.i2c_start
-                0x00000000       0x14 src/main.o
  .text          0x00000000        0x0 src/uart.o
  .data          0x00000000        0x0 src/uart.o
  .bss           0x00000000        0x0 src/uart.o
+ .text.UART_SendData8
+                0x00000000        0xe src/uart.o
  .text.TU_send  0x00000000        0xc src/uart.o
+ .text.TU_puts  0x00000000       0x20 src/uart.o
  .rodata.str1.1
                 0x00000000        0x6 src/uart.o
  .text.TU_putln
@@ -248,7 +247,7 @@ END GROUP
 .rela.plt
  *(.rela.plt)
 
-.text           0x00000000      0x376
+.text           0x00000000      0x16a
  *(.vectors)
  .vectors       0x00000000       0x68 C:/Program Files (x86)/Atmel/Studio/7.0/Packs/atmel/ATmega_DFP/1.2.209/gcc/dev/atmega328p/avr5/crtatmega328p.o
                 0x00000000                __vector_default
@@ -333,52 +332,26 @@ END GROUP
                 0x00000092                __vector_20
                 0x00000096                . = ALIGN (0x2)
  *(.text.*)
- .text.ass_i2c_delay_half
-                0x00000096        0xa src/main.o
-                0x00000096                ass_i2c_delay_half
- .text.ass_i2c_wait_scl_high
-                0x000000a0       0x28 src/main.o
-                0x000000a0                ass_i2c_wait_scl_high
- .text.i2c_rep_start
-                0x000000c8       0x26 src/main.o
-                0x000000c8                i2c_rep_start
- .text.i2c_start_wait
-                0x000000ee       0x2a src/main.o
-                0x000000ee                i2c_start_wait
- .text.ass_i2c_stop
-                0x00000118       0x1c src/main.o
-                0x00000118                ass_i2c_stop
- .text.ass_i2c_write
-                0x00000134       0x76 src/main.o
-                0x00000134                ass_i2c_write
- .text.i2c_read
-                0x000001aa       0x6c src/main.o
-                0x000001aa                i2c_read
  .text.startup.main
-                0x00000216       0x6c src/main.o
-                0x00000216                main
+                0x00000096        0xe src/main.o
+                0x00000096                main
  .text.USART_Init
-                0x00000282       0x40 src/uart.o
-                0x00000282                USART_Init
- .text.UART_SendData8
-                0x000002c2        0xe src/uart.o
-                0x000002c2                UART_SendData8
- .text.TU_puts  0x000002d0       0x20 src/uart.o
-                0x000002d0                TU_puts
+                0x000000a4       0x40 src/uart.o
+                0x000000a4                USART_Init
  .text.libgcc.div
-                0x000002f0       0x2e c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_divmodsi4.o)
-                0x000002f0                __divmodsi4
+                0x000000e4       0x2e c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_divmodsi4.o)
+                0x000000e4                __divmodsi4
  .text.libgcc.div
-                0x0000031e       0x10 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_negsi2.o)
-                0x0000031e                __negsi2
+                0x00000112       0x10 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_negsi2.o)
+                0x00000112                __negsi2
  .text.libgcc.div
-                0x0000032e       0x44 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_udivmodsi4.o)
-                0x0000032e                __udivmodsi4
-                0x00000372                . = ALIGN (0x2)
+                0x00000122       0x44 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_udivmodsi4.o)
+                0x00000122                __udivmodsi4
+                0x00000166                . = ALIGN (0x2)
  *(.fini9)
- .fini9         0x00000372        0x0 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_exit.o)
-                0x00000372                _exit
-                0x00000372                exit
+ .fini9         0x00000166        0x0 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_exit.o)
+                0x00000166                _exit
+                0x00000166                exit
  *(.fini9)
  *(.fini8)
  *(.fini8)
@@ -397,38 +370,36 @@ END GROUP
  *(.fini1)
  *(.fini1)
  *(.fini0)
- .fini0         0x00000372        0x4 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_exit.o)
+ .fini0         0x00000166        0x4 c:/program files (x86)/atmel/studio/7.0/toolchain/avr8/avr8-gnu-toolchain/bin/../lib/gcc/avr/5.4.0/avr5\libgcc.a(_exit.o)
  *(.fini0)
-                0x00000376                _etext = .
+                0x0000016a                _etext = .
 
-.data           0x00800100       0x10 load address 0x00000376
+.data           0x00800100        0x0 load address 0x0000016a
                 0x00800100                PROVIDE (__data_start, .)
  *(.data)
  *(.data*)
  *(.gnu.linkonce.d*)
  *(.rodata)
  *(.rodata*)
- .rodata.str1.1
-                0x00800100       0x10 src/main.o
  *(.gnu.linkonce.r*)
-                0x00800110                . = ALIGN (0x2)
-                0x00800110                _edata = .
-                0x00800110                PROVIDE (__data_end, .)
+                0x00800100                . = ALIGN (0x2)
+                0x00800100                _edata = .
+                0x00800100                PROVIDE (__data_end, .)
 
-.bss            0x00800110        0x0
+.bss            0x00800100        0x0
                 [!provide]                PROVIDE (__bss_start, .)
  *(.bss)
  *(.bss*)
  *(COMMON)
                 [!provide]                PROVIDE (__bss_end, .)
-                0x00000376                __data_load_start = LOADADDR (.data)
-                0x00000386                __data_load_end = (__data_load_start + SIZEOF (.data))
+                0x0000016a                __data_load_start = LOADADDR (.data)
+                0x0000016a                __data_load_end = (__data_load_start + SIZEOF (.data))
 
-.noinit         0x00800110        0x0
+.noinit         0x00800100        0x0
                 [!provide]                PROVIDE (__noinit_start, .)
  *(.noinit*)
                 [!provide]                PROVIDE (__noinit_end, .)
-                0x00800110                _end = .
+                0x00800100                _end = .
                 [!provide]                PROVIDE (__heap_start, .)
 
 .eeprom         0x00810000        0x0
