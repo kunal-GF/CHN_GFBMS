@@ -128,10 +128,10 @@ void setup()
   eeprom_write_byte(0x22, 0x00);
 
   /**pack under temperature trip threshold*/
-  eeprom_write_byte(0x23, 0x0F);
+  eeprom_write_byte(0x23, 0x18);
 
   /**pack under temperature release threshold*/
-  eeprom_write_byte(0x24, 0x14);
+  eeprom_write_byte(0x24, 0x1B);
 
   /**pack under temperature trip count times higher bits*/
   eeprom_write_byte(0x25, 0x00);
@@ -162,6 +162,7 @@ void setup()
 
   /**over current in charge fault higher bits*/
   //eeprom_write_byte(0x2E, 0x00);
+
 }
 
 void loop() 

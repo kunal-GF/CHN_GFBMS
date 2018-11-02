@@ -246,6 +246,7 @@ void setup()
   afe_initz();
 
   init_PCI();
+  
 }
 
 
@@ -275,8 +276,9 @@ void setup()
                                                                                                     BL_Process(serial_command);
 
                                                                                                     if(keytog == 0x40)
-                                                                                                    chk_key_act();
-
+                                                                                                    {
+                                                                                                      chk_key_act();
+                                                                                                    }
                                                                                                 }
 
 
@@ -305,11 +307,12 @@ void i2c_initz(void)
   /**Set PINB0 pin as OUTPUT*/
   DDRB |= 0b00000001;
   /**Set PINC0 pin as OUTPUT*/
-  DDRC |= 0b00000001;
+  DDRC |= 0b00000011;
   /**Set PINB0 pin in LOW state*/
   PORTB &= ~(1<<PINB0);
   /**Set PINC0 pin in HIGH state*/
   PORTC |= 1<<PINC0;
+  PORTC |= 1<<PINC1;
 }
 /**Function ends here*/
 
@@ -1614,9 +1617,9 @@ uint16_t merge_16(uint8_t h_16, uint8_t l_16)
 void trip(void)
 {
   /**cell over voltage fault*/
-  if((afe_isr_reg[127]&0x04))
+  if((afe_isr_reg[127]&0x80))
   {
-    afe_isr_reg[0] |= (1<<0); 
+    afe_isr_reg[0] |= (1<<7); 
     eeprom_update_byte(0x00, afe_isr_reg[0]);
     if(afe_isr_reg[74] == 0xFF)
     {
@@ -1633,9 +1636,9 @@ void trip(void)
   }
 
   /**cell under voltage fault*/
-  if((afe_isr_reg[127]&0x08))
+  if((afe_isr_reg[127]&0x40))
   {
-    afe_isr_reg[0] |= (1<<1); 
+    afe_isr_reg[0] |= (1<<6); 
     eeprom_update_byte(0x00, afe_isr_reg[0]);
 
     if(afe_isr_reg[76] == 0xFF)
@@ -1656,7 +1659,7 @@ void trip(void)
     {
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
       keytog = 0x00;
-      afe_isr_reg[0] |= (1 << 2); 
+      afe_isr_reg[0] |= (1 << 5); 
       eeprom_update_byte(0x00, afe_isr_reg[0]);
 
       if(afe_isr_reg[78] == 0xFF)
@@ -1677,7 +1680,7 @@ void trip(void)
     {
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
       keytog = 0x00;
-      afe_isr_reg[0] |= (1<<3); 
+      afe_isr_reg[0] |= (1<<4); 
       eeprom_update_byte(0x00, afe_isr_reg[0]);
 
       if(afe_isr_reg[80] == 0xFF)
@@ -1698,7 +1701,7 @@ void trip(void)
     {
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
       keytog = 0x00;
-      afe_isr_reg[0] |= (1<<6); 
+      afe_isr_reg[0] |= (1<<1); 
       eeprom_update_byte(0x00, afe_isr_reg[0]);
 
       if(afe_isr_reg[70] == 0xFF)
@@ -1711,6 +1714,7 @@ void trip(void)
       eeprom_update_byte(0x12, afe_isr_reg[70]);
       eeprom_update_byte(0x11, afe_isr_reg[69]);
       TU_putln("pack over current during charging fault");
+      ocscpreviousmilis = millis();
     }
 
   /**over current in discharging fault*/
@@ -1720,7 +1724,7 @@ void trip(void)
       {
         i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
         keytog = 0x00;
-        afe_isr_reg[0] |= (1<<7); 
+        afe_isr_reg[0] |= (1<<0); 
         eeprom_update_byte(0x00, afe_isr_reg[0]);
   
         if(afe_isr_reg[72] == 0xFF)
@@ -1733,15 +1737,16 @@ void trip(void)
         eeprom_update_byte(0x12, afe_isr_reg[72]);
         eeprom_update_byte(0x11, afe_isr_reg[71]);
         TU_putln("pack over current during discharging fault");
+        ocscpreviousmilis = millis();
       }
   }
 
   /**pack over temperature fault*/
-  if(afe_isr_reg[137] > afe_isr_reg[97])
+  if((afe_isr_reg[137] > afe_isr_reg[97]) && (!(afe_isr_reg[0] & 0x08)))
   {
     i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
     keytog = 0x00;
-    afe_isr_reg[0] |= (1<<4);
+    afe_isr_reg[0] |= (1<<3);
     eeprom_update_byte(0x00, afe_isr_reg[0]);
 
     if(afe_isr_reg[72] == 0xFF)
@@ -1758,11 +1763,11 @@ void trip(void)
 
 
   /**pack under temperature fault*/
-  if(afe_isr_reg[141] < afe_isr_reg[98])
+  if((afe_isr_reg[141] < afe_isr_reg[98]) && (!(afe_isr_reg[0] & 0x04)))
   {
     i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
     keytog = 0x00;
-    afe_isr_reg[0] |= (1<<5);
+    afe_isr_reg[0] |= (1<<2);
     eeprom_update_byte(0x00, afe_isr_reg[0]);
 
     if(afe_isr_reg[84] == 0xFF)
@@ -1791,61 +1796,65 @@ void trip(void)
 void rel(void)
 {
   /**cell overvoltage release*/
-  if((afe_isr_reg[0] & 0x01))
+  if((afe_isr_reg[0] & 0x80))
   {
     cvmaxmin();
     if(cmax < merge_16(afe_isr_reg[101],afe_isr_reg[102]))
     {
-      afe_isr_reg[0] &= ~(1<<0);
+      afe_isr_reg[0] &= ~(1<<7);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x04);
       TU_putln("Cell overvoltage released"); 
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
 
 
   /**cell undervoltage release*/
-  if((afe_isr_reg[0] & 0x02))
+  if((afe_isr_reg[0] & 0x40))
   {
     cvmaxmin();
     if(cmin > merge_16(afe_isr_reg[99],afe_isr_reg[100]))
     {
-      afe_isr_reg[0] &= ~(1<<1);
+      afe_isr_reg[0] &= ~(1<<6);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x08); 
       TU_putln("cell under voltage released"); 
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
 
   /**pack overvoltage release*/
-  if((afe_isr_reg[0] & 0x04))
+  if((afe_isr_reg[0] & 0x20))
   {
     if(merge_16(afe_isr_reg[2],afe_isr_reg[3]) < merge_16(afe_isr_reg[103],afe_isr_reg[104]))
     {
-      afe_isr_reg[0]   &= ~(1<<2); 
+      afe_isr_reg[0]   &= ~(1<<5); 
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("pack overvoltage release");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
   /**pack undervoltage release*/
-  if((afe_isr_reg[0] & 0x08))
+  if((afe_isr_reg[0] & 0x10))
   {
     if(merge_16(afe_isr_reg[2],afe_isr_reg[3]) > merge_16(afe_isr_reg[105],afe_isr_reg[106]))
     {
-      afe_isr_reg[0] &= ~(1<<3);
+      afe_isr_reg[0] &= ~(1<<4);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("pack undervoltage release");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
@@ -1856,44 +1865,46 @@ void rel(void)
    *ocscpreviousmilis = 0;
    */
  
-  if((afe_isr_reg[0] & 0x40) || (afe_isr_reg[0] & 0x80))
+  if((afe_isr_reg[0] & 0x02) || (afe_isr_reg[0] & 0x01))
   {
     if(millis() - ocscpreviousmilis >= ocscerval)
     {
-      ocscpreviousmilis = millis();
-      afe_isr_reg[0] &= ~(1<<6);
-      afe_isr_reg[0] &= ~(1<<7);
+      afe_isr_reg[0] &= ~(1<<0);
+      afe_isr_reg[0] &= ~(1<<1);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("overcurrent in C/D released");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
   /**Pack over temperature release*/
-  if((afe_isr_reg[0] & 0x10))
+  if((afe_isr_reg[0] & 0x08))
   {
     if(afe_isr_reg[137] < afe_isr_reg[108])
     {
-      afe_isr_reg[0] &= ~(1<<4);
+      afe_isr_reg[0] &= ~(1<<3);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("pack overtemperature released");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 
 
   /**Pack under temperature release*/
-  if((afe_isr_reg[0] & 0x20))
+  if((afe_isr_reg[0] & 0x04))
   {
     if(afe_isr_reg[141] > afe_isr_reg[109])
     {
-      afe_isr_reg[0] &= ~(1<<5);
+      afe_isr_reg[0] &= ~(1<<2);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("pack undertemperature released");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
+      keyrhgpreviousmilis = millis();
     }
   }
 }
@@ -1952,18 +1963,18 @@ void keyin(void)
    * soc should be greater then 15%(configurable)
    * (optional) on pressing key after drive on , switch backs off the drive
    */
-  if((afe_isr_reg[0]+afe_isr_reg[1] == 0x00) && (afe_isr_reg[8] > 0x0F))
+  if(((afe_isr_reg[0]+afe_isr_reg[1] == 0x00)||(afe_isr_reg[0])& 0x20) && (afe_isr_reg[8] > 0x0F))
   {
-    
     i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
     keytog = 0x40;
+    keyrhgpreviousmilis = millis();
   }
 }
 
 
 void recharge(void)
 {
-  i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+  i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43); 
 }
 
 
@@ -1984,14 +1995,12 @@ uint8_t keystate(uint8_t ks)
 void chk_key_act(void)
 {
   if(millis() - keyrhgpreviousmilis >= keyrhgerval)
-  {
-    keyrhgpreviousmilis = millis();
+  { 
     if(merge_16(afe_isr_reg[4],afe_isr_reg[5]) < 0x0017)
     {
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
       keytog = 0x00;
     }
-    
   }
 }
 
