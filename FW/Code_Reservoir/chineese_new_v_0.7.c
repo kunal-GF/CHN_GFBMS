@@ -12,25 +12,48 @@
 #define UV_TRIP 0x0A
 #define CC_CFG 0x0B
 #define VC1_HI 0x0C
+#define VC1_LO 0x0D
 #define VC2_HI 0x0E
+#define VC2_LO 0x0F
 #define VC3_HI 0x10
+#define VC3_LO 0x11
 #define VC4_HI 0x12
+#define VC4_LO 0x13
 #define VC5_HI 0x14
+#define VC5_LO 0x15
 #define VC6_HI 0x16
+#define VC6_LO 0x17
 #define VC7_HI 0x18
+#define VC7_LO 0x19
 #define VC8_HI 0x1A
+#define VC8_LO 0x1B
 #define VC9_HI 0x1C
+#define VC9_LO 0x1D
 #define VC10_HI 0x1E
+#define VC10_LO 0x1F
 #define VC11_HI 0x20
+#define VC11_LO 0x21
 #define VC12_HI 0x22
+#define VC12_LO 0x23
 #define VC13_HI 0x24
+#define VC13_LO 0x25
 #define VC14_HI 0x26
+#define VC14_LO 0x27
 #define VC15_HI 0x28
+#define VC15_LO 0x29
 #define VP_HI 0x2A
+#define VP_LO 0x2B
 #define TS1_HI 0x2C
+#define TS1_LO 0x2D
 #define TS2_HI 0x2E
+#define TS2_LO 0x2F
 #define TS3_HI 0x30
+#define TS3_LO 0x31
 #define CC_HI 0x32
+#define CC_LO 0x33
+#define ADCGAIN1 0x50
+#define ADCOFFSET 0x51
+#define ADCGAIN2 0x59
 /*----------------------------------------------------END----------------------------------------------------------*/
 /**********************************************AFE I2C definations*************************************************/
 #define I2C_TIMEOUT 1000
@@ -156,7 +179,8 @@ const char cmd_rhg[SZ_CMD_RHG]        =  "rhg:F0";
 
 
 
-volatile uint8_t afe_isr_reg[143];
+volatile uint8_t afe_isr_reg[143], temp_read=0;
+volatile bool erom_cng=1;
 volatile uint8_t serial_command;
 /** Exposed Buffer for Serial data reception */
 uint8_t comm_buffer[COMM_MAX_BUFFER_SZ];
@@ -167,13 +191,15 @@ uint8_t comm_cmd_sz;
 /** Exposed pointer to next part of Command for further processing */
 uint8_t* comm_ptr_next;
 volatile uint8_t isr_count=0,isr_count2=0;
+volatile uint16_t ccf;
+volatile uint16_t ct_sum;
+volatile uint8_t ct_sum_count;
 volatile uint16_t cmax=0x0000,cmin=0xFFFF;
 uint8_t temph1,templ1,temph2,templ2,tempmax1,tempmax2;
 uint8_t currh,currl;
 uint8_t keytog = 0x00;
 uint8_t rhgtog = 0x00;
-uint8_t h,l;
-uint8_t verbo;
+
 
 const long keyrhgerval = 60000;
 unsigned long keyrhgpreviousmilis = 0;
@@ -235,7 +261,7 @@ void setup()
                                                                                                       db();
                                                                                                       bsbi();
                                                                                                       bscv();
-                                                                                                      cvmaxmin();
+																									  cvmaxmin();
                                                                                                       trip();
                                                                                                       rel();
                                                                                                       isr_count=0;
@@ -300,7 +326,7 @@ void afe_initz(void)
    *load values from array to afe 
    *
    */
-   TU_putHex(0x01);  
+   TU_putln("Writting values to AFE");  
    ldsett();
    i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL1, afe_isr_reg[128]);
    i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, afe_isr_reg[129]);
@@ -313,7 +339,7 @@ void afe_initz(void)
    i2c_WriteWithCRC(I2C_7BITADDR, CELLBAL1,  afe_isr_reg[134]);
    i2c_WriteWithCRC(I2C_7BITADDR, CELLBAL2,  afe_isr_reg[135]);
    i2c_WriteWithCRC(I2C_7BITADDR, CELLBAL3,  afe_isr_reg[136]);
-   TU_putHex(0xFF);
+   TU_putln("Values written to AFE sucessfully");
 }
 
 
@@ -326,7 +352,7 @@ void afe_initz(void)
 /**Function to load default values from EEPROM to local array*/
 void ldsett(void)
 {
-    TU_putHex(0x01);
+  TU_putln("Loading values from EEPROM");
     /**Load fault status higher 8 bits from EEPROM to local array*/
     afe_isr_reg[0] = eeprom_read_byte(0x00);
     /**Load fault status lower 8 bits from EEPROM to local array*/
@@ -463,7 +489,7 @@ void ldsett(void)
   /**Load value of recharge showup %cetage*/
     afe_isr_reg[35] = eeprom_read_byte(0x43);
     
-    TU_putHex(0xFF);
+    TU_putln("Values loadaed from EEPROM sucessfully");
 }
 /**End of function*/
 
@@ -606,7 +632,7 @@ void TU_putHex(uint8_t data)
 /* if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -619,7 +645,7 @@ void TU_putHex(uint8_t data)
 /* if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -640,7 +666,7 @@ void TU_putHex(uint8_t data)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -674,7 +700,7 @@ void db(void)
   if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -687,7 +713,7 @@ void db(void)
   if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -704,7 +730,7 @@ void db(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -727,7 +753,7 @@ void db(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -741,7 +767,7 @@ void db(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -761,7 +787,7 @@ void db(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -836,7 +862,7 @@ void bscv(void)
   if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -852,7 +878,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -869,7 +895,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -885,7 +911,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -902,7 +928,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -918,7 +944,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -935,7 +961,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -951,7 +977,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -968,7 +994,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -985,7 +1011,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -1002,7 +1028,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -1018,7 +1044,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -1034,7 +1060,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
-      TU_putHex(0x00);
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -1051,6 +1077,7 @@ void bscv(void)
     if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
     {
       
+      TU_putln("I2C device busy");
       _delay_ms(1000);
       return;
     }
@@ -1267,6 +1294,8 @@ void ps_log(void)
 
 void configwr(void)
 {
+  uint8_t cd,h,l;
+  cd=h=l=0;
   uint8_t num = 0; // For reading the Sent Digit
   uint8_t i;       // For Counter
   // Exactly 2 Bytes additional
@@ -1292,438 +1321,98 @@ void configwr(void)
           /*
            * FAQ    : Where does comm_ptr_next[5] goes ?
            * Answer : comm_ptr_next[5] stores ':'
-           * 
-           * 0x06 is for current callibration.
            */
           case 0x06 :
           h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-          
+          h = str2hex(comm_ptr_next[6]);
+          l = str2hex(comm_ptr_next[7]);
+          h = (h<<4) | (l & 0xff);
+
           afe_isr_reg[6] = h;
-          afe_isr_reg[7] = l;
+          
+          h=l=0;
+          h = str2hex(comm_ptr_next[8]);
+          l = str2hex(comm_ptr_next[9]);
+          h = (h<<4) | (l & 0xff);
+
+          afe_isr_reg[7] = h;
 
           eeprom_write_byte(0x31, afe_isr_reg[6]);
           eeprom_write_byte(0x32, afe_isr_reg[7]);
-          TU_putHex(0xFF);
+          TU_putln("Current callibration factor updated sucessfully!");
           break;
 
-          /*
-           * 0x23 is for recharge %centage icon
-           */
+
           case 0x23 :
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
+          h=l=0;
+          h = str2hex(comm_ptr_next[6]);
+          l = str2hex(comm_ptr_next[7]);
+          h = (h<<4) | (l & 0xff);
+
           afe_isr_reg[35] = h;
           
           eeprom_write_byte(0x43, afe_isr_reg[35]);
-          TU_putHex(0xFF);
+          TU_putln("recharge icon %centage threshold updated sucessfully!");
           break;
 
-          /*
-           * 0x79 is for cell voltage callibration.
-           */
           case 0x79 :
           h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
+          h = str2hex(comm_ptr_next[6]);
+          l = str2hex(comm_ptr_next[7]);
+          h = (h<<4) | (l & 0xff);
 
           afe_isr_reg[121] = h;
-          afe_isr_reg[122] = l;
+          
+          h=l=0;
+          h = str2hex(comm_ptr_next[8]);
+          l = str2hex(comm_ptr_next[9]);
+          h = (h<<4) | (l & 0xff);
+
+          afe_isr_reg[122] = h;
 
           eeprom_write_byte(0x34, afe_isr_reg[121]);
           eeprom_write_byte(0x35, afe_isr_reg[122]);
-          TU_putHex(0xFF);
+          TU_putln("Cell voltage callibration factor updated sucessfully!");
           break;
 
-          /*
-           * 0x7B is for pack voltage callibration
-           */
           case 0x7B :
           h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-          
+          h = str2hex(comm_ptr_next[6]);
+          l = str2hex(comm_ptr_next[7]);
+          h = (h<<4) | (l & 0xff);
+
           afe_isr_reg[123] = h;
-          afe_isr_reg[124] = l;
+          
+          h=l=0;
+          h = str2hex(comm_ptr_next[8]);
+          l = str2hex(comm_ptr_next[9]);
+          h = (h<<4) | (l & 0xff);
+
+          afe_isr_reg[124] = h;
 
           eeprom_write_byte(0x36, afe_isr_reg[123]);
           eeprom_write_byte(0x37, afe_isr_reg[124]);
-          TU_putHex(0xFF);
+          TU_putln("Pack voltage callibration factor updated sucessfully!");
           break;
 
-          /*
-           * 0x0D is for Nominal capacity
-           */
           case 0x0D :
           h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
+          h = str2hex(comm_ptr_next[6]);
+          l = str2hex(comm_ptr_next[7]);
+          h = (h<<4) | (l & 0xff);
 
           afe_isr_reg[13] = h;
 
           eeprom_write_byte(0x37, afe_isr_reg[13]);
-          TU_putHex(0xFF);
+          TU_putln("Nominal capacity updated sucessfully!");
           break;
-
-         /*
-          * 0x55 is for configuring cell under voltage threshold
-          */
-          case 0x55 :
-         
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h,l) < merge_16(afe_isr_reg[99], afe_isr_reg[100]))
-          {
-            afe_isr_reg[85] = h;
-            afe_isr_reg[86] = l;
-            eeprom_write_byte(0x46, afe_isr_reg[85]);
-            eeprom_write_byte(0x47, afe_isr_reg[86]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-          
-          /*
-           * 0x57 is for configuring cell over voltage trip threshold
-           */
-          case 0x57 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h, l) > merge_16(afe_isr_reg[101], afe_isr_reg[102]))
-          {
-            afe_isr_reg[87] = h;
-            afe_isr_reg[88] = l;
-            eeprom_write_byte(0x46, afe_isr_reg[87]);
-            eeprom_write_byte(0x47, afe_isr_reg[88]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-          
-
-          /*
-           * 0x59 is for configuring pack over voltage trip threshold
-           */
-          case 0x59 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h,l) > merge_16(afe_isr_reg[103], afe_isr_reg[104]))
-          {
-            afe_isr_reg[89] = h;
-            afe_isr_reg[90] = l;
-            eeprom_write_byte(0x46, afe_isr_reg[89]);
-            eeprom_write_byte(0x47, afe_isr_reg[90]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-
-          /*
-           * 0x5B is for configuring pack under voltage trip threshold
-           */
-          case 0x5B :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h,l) < merge_16(afe_isr_reg[105], afe_isr_reg[106]))
-          {
-            afe_isr_reg[91] = h;
-            afe_isr_reg[92] = l;
-            eeprom_write_byte(0x46, afe_isr_reg[91]);
-            eeprom_write_byte(0x47, afe_isr_reg[92]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-
-          /*
-           * 0x5D is for configuring pack over current in charging trip threshold
-           */
-          case 0x5D :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          afe_isr_reg[93] = h;
-          afe_isr_reg[94] = l;
-
-          eeprom_write_byte(0x2A, afe_isr_reg[93]);
-          eeprom_write_byte(0x2B, afe_isr_reg[94]);
-          TU_putHex(0xFF);
-          break;
-
-
-          /*
-           * 0x5F is for configuring pack over current in discharging trip threshold
-           */
-          case 0x5F :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          afe_isr_reg[95] = h;
-          afe_isr_reg[96] = l;
-          eeprom_write_byte(0x2A, afe_isr_reg[95]);
-          eeprom_write_byte(0x2B, afe_isr_reg[96]);
-          TU_putHex(0xFF);
-          break;
-          
-          
-       
-
-        /*
-           * 0x61 is for configuring pack over temperature trip threshold
-           */
-          case 0x61 :
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          
-
-
-          if(h > afe_isr_reg[108])
-          {
-            afe_isr_reg[97] = h;
-            eeprom_write_byte(0x1F, afe_isr_reg[97]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-          
-
-
-           /*
-           * 0x61 is for configuring pack under temperature trip threshold
-           */
-          case 0x62 :
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-
-          if(h < afe_isr_reg[109])
-          {
-            afe_isr_reg[98] = h;
-            eeprom_write_byte(0x23, afe_isr_reg[98]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-          /*
-          * 0x63 is for configuring cell under voltage release threshold
-          */
-          case 0x63 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h,l) > merge_16(afe_isr_reg[85], afe_isr_reg[86]))
-          {
-            afe_isr_reg[99] = h;
-            afe_isr_reg[100] = l;
-            eeprom_write_byte(0x0F, afe_isr_reg[99]);
-            eeprom_write_byte(0x10, afe_isr_reg[100]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-          
-
-          /*
-          * 0x65 is for configuring cell over voltage release threshold
-          */
-          case 0x65 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h, l) < merge_16(afe_isr_reg[87], afe_isr_reg[88]))
-          {
-            afe_isr_reg[101] = h;
-            afe_isr_reg[102] = l;
-            eeprom_write_byte(0x0A, afe_isr_reg[101]);
-            eeprom_write_byte(0x0B, afe_isr_reg[102]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-
-          /*
-          * 0x67 is for configuring pack over voltage release threshold
-          */
-          case 0x67 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h, l) < merge_16(afe_isr_reg[89], afe_isr_reg[90]))
-          {
-            afe_isr_reg[103] = h;
-            afe_isr_reg[104] = l;
-            eeprom_write_byte(0x15, afe_isr_reg[103]);
-            eeprom_write_byte(0x16, afe_isr_reg[104]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-
-          /*
-          * 0x69 is for configuring pack under voltage release threshold
-          */
-          case 0x69 :
-          h=l=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-          l = (str2hex(comm_ptr_next[8])<<4) | (str2hex(comm_ptr_next[9]) & 0xff);
-
-          if(merge_16(h, l) > merge_16(afe_isr_reg[91], afe_isr_reg[92]))
-          {
-            afe_isr_reg[105] = h;
-            afe_isr_reg[106] = l;
-            eeprom_write_byte(0x1B, afe_isr_reg[105]);
-            eeprom_write_byte(0x1C, afe_isr_reg[106]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-
-          
-
-
-
-
-
-
-
-          /*
-           * 0x6C is for configuring pack over temperature release threshold
-           */
-          case 0x6C :
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-
-          if(h < afe_isr_reg[97])
-          {
-            afe_isr_reg[108] = h;
-            eeprom_write_byte(0x20, afe_isr_reg[108]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-          
-
-
-           /*
-           * 0x6D is for configuring pack under temperature release threshold
-           */
-          case 0x6D :
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-
-          if(h > afe_isr_reg[98])
-          {
-            afe_isr_reg[109] = h;
-            eeprom_write_byte(0x24, afe_isr_reg[109]);
-            TU_putHex(0xFF);
-            break;
-          }
-
-          else
-          {
-            TU_putHex(0x00);
-            break;
-          }
-
-          case 0x6B : 
-          h=0;
-          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
-
-          afe_isr_reg[107] = h;
-          eeprom_write_byte(0x2F, afe_isr_reg[107]);
-          TU_putHex(0xFF);
-          break;
-          
-
-
-
-
-
-
-
-
         }
-
       }
       
   
       if(comm_ptr_next[1] == 'r')
       {
-        TU_putln(0xF1);
+        TU_putln("Value to be read");
       }
       
       sei();
@@ -1731,7 +1420,7 @@ void configwr(void)
       return;
     }
     
-    TU_putHex(0x00);          
+    TU_putln("wrong config command");          
   }
 }
 
@@ -2067,9 +1756,9 @@ uint16_t merge_16(uint8_t h_16, uint8_t l_16)
 void trip(void)
 {
   /**cell over voltage fault*/
-  if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88]))) && (!(afe_isr_reg[0] & 0x80)) && (rhgtog = 0x00))
+  if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88]))) && (!(afe_isr_reg[0] & 80)))
   {
-  i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x42);  
+	i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x42);	
     afe_isr_reg[0] |= (1<<7); 
     eeprom_update_byte(0x00, afe_isr_reg[0]);
     if(afe_isr_reg[74] == 0xFF)
@@ -2087,9 +1776,9 @@ void trip(void)
   }
 
   /**cell under voltage fault*/
-  if(((afe_isr_reg[127]&0x08) || (cmin < merge_16(afe_isr_reg[85],afe_isr_reg[86]))) && (!(afe_isr_reg[0] & 0x40)))
+  if(((afe_isr_reg[127]&0x08) || (cmin < merge_16(afe_isr_reg[91],afe_isr_reg[92]))) && (!(afe_isr_reg[0] & 40)))
   {
-    i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x41);
+	i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x41);
     afe_isr_reg[0] |= (1<<6); 
     eeprom_update_byte(0x00, afe_isr_reg[0]);
 
@@ -2102,13 +1791,12 @@ void trip(void)
     afe_isr_reg[76] += 1;
     eeprom_update_byte(0x12, afe_isr_reg[76]);
     eeprom_update_byte(0x11, afe_isr_reg[75]);
-    if(verbo == 0x40)
     TU_putln("Cell undervoltage fault"); 
     keytog = 0x00;
   }
   
    /**pack overvoltage fault*/
-    if((merge_16(afe_isr_reg[2],afe_isr_reg[3]) > merge_16(afe_isr_reg[89],afe_isr_reg[90])) && (!(afe_isr_reg[0] & 0x20)))
+    if((merge_16(afe_isr_reg[2],afe_isr_reg[3]) > merge_16(afe_isr_reg[89],afe_isr_reg[90])) && (!(afe_isr_reg[0] & 20)))
     {
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x42);
       keytog = 0x00;
@@ -2265,7 +1953,7 @@ void rel(void)
 
 
   /**cell undervoltage release*/
-  if(afe_isr_reg[0] & 0x40)
+  if((afe_isr_reg[0] & 0x40))
   {
     cvmaxmin();
     if(cmin > merge_16(afe_isr_reg[99],afe_isr_reg[100]))
@@ -2276,8 +1964,6 @@ void rel(void)
       TU_putln("cell under voltage released"); 
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
-      rhgtog = 0x00;
-      afe_isr_reg[9] = 0x0F;
     }
   }
 
@@ -2305,8 +1991,6 @@ void rel(void)
       TU_putln("pack undervoltage release");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       keytog = 0x40;
-      rhgtog = 0x00;
-      afe_isr_reg[9] = 0x0F;
     }
   }
 
@@ -2430,7 +2114,6 @@ void recharge(void)
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       TU_putln("pack undervoltage release");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      rhgtog = 0x40;
     }
 }
 
@@ -2438,7 +2121,7 @@ void recharge(void)
 
 uint8_t keystate(uint8_t ks)
 {
-  if((ks <= afe_isr_reg[35]) || (afe_isr_reg[0] & 0x10) || (afe_isr_reg[0] & 0x40))
+  if((ks <= afe_isr_reg[35]) || (afe_isr_reg[0] & 0x10))
   return 0x00;
 
   else
@@ -2458,7 +2141,5 @@ void chk_key_act(void)
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x40);
       keytog = 0x00;
     }
-    keyrhgpreviousmilis = millis();
   }
 }
-

@@ -163,6 +163,9 @@ void setup()
   /**over current in charge fault higher bits*/
   //eeprom_write_byte(0x2E, 0x00);
 
+  /**key recharge %centage*/
+  eeprom_write_byte(0x43, 0x00);
+
 }
 
 void loop() 

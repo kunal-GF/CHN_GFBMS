@@ -1143,7 +1143,7 @@ uint8_t str2hex(char s)
 void db_log(void)
 {
   cli();  
-  for(volatile int g=0; g<11; g++)
+  /*for(volatile int g=0; g<11; g++)
   {
     TU_putHex(afe_isr_reg[g]);
     if(g > 9)
@@ -1157,7 +1157,18 @@ void db_log(void)
     
     else
     TU_send(':');
+  }*/
+
+
+
+  for(volatile int g=0; g<144; g++)
+  {
+    TU_puts("0x");
+    TU_putHex(afe_isr_reg[g]);
+    TU_send(',');
   }
+
+  
   sei();
   i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0xFF);
 }
@@ -2173,7 +2184,7 @@ void trip(void)
   /**over current in discharging fault*/
   if(merge_16(afe_isr_reg[4],afe_isr_reg[5])& 0x8000)
   {
-    if(merge_16(afe_isr_reg[4],afe_isr_reg[5]) < merge_16(afe_isr_reg[95],afe_isr_reg[96]))
+    if((merge_16(afe_isr_reg[4],afe_isr_reg[5]) < merge_16(afe_isr_reg[95],afe_isr_reg[96])) || (rhgtog == 0x40))
       {
         i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x41);
         keytog = 0x00;
@@ -2266,8 +2277,7 @@ void rel(void)
 
   /**cell undervoltage release*/
   if(afe_isr_reg[0] & 0x40)
-  {
-    cvmaxmin();
+  { 
     if(cmin > merge_16(afe_isr_reg[99],afe_isr_reg[100]))
     {
       afe_isr_reg[0] &= ~(1<<6);
@@ -2371,7 +2381,8 @@ void rel(void)
 
 void cvmaxmin(void)
 {
-  
+  cmax=0x0000;
+  cmin=0xFFFF;
   for(int i=39; i<66;)
   {
     if(merge_16(afe_isr_reg[i],afe_isr_reg[i+1]) > cmax)
@@ -2428,7 +2439,7 @@ void recharge(void)
     {
       afe_isr_reg[0] &= ~(1<<4);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
-      TU_putln("pack undervoltage release");
+      //TU_putln("pack undervoltage release");
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
       rhgtog = 0x40;
     }
@@ -2438,10 +2449,12 @@ void recharge(void)
 
 uint8_t keystate(uint8_t ks)
 {
-  if((ks <= afe_isr_reg[35]) || (afe_isr_reg[0] & 0x10) || (afe_isr_reg[0] & 0x40))
+  if((afe_isr_reg[0] & 0x10) || (afe_isr_reg[0] & 0x40))
   return 0x00;
+  /**Show recharge*/
 
   else
+  /**Show key*/
   return 0x0F;
 }
 
@@ -2461,4 +2474,7 @@ void chk_key_act(void)
     keyrhgpreviousmilis = millis();
   }
 }
+
+
+
 
