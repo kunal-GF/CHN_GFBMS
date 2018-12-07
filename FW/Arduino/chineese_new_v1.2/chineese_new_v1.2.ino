@@ -78,7 +78,11 @@
 /**Communication command for dashboard*/
 #define COMM_CMD_VON         10  
 /**Communication command for dashboard*/
-#define COMM_CMD_VOFF        11              
+#define COMM_CMD_VOFF        11   
+/**Communication command for dashboard*/
+#define COMM_CMD_LON         12  
+/**Communication command for dashboard*/
+#define COMM_CMD_LOFF        13              
 
 /**********************************************Size definations for communication commands***************************/
 /**Size for data log command*/
@@ -100,13 +104,21 @@
 /**Size for data log command*/
 #define SZ_CMD_VON            3      
 /**Size for data log command*/
-#define SZ_CMD_VOFF           4              
+#define SZ_CMD_VOFF           4   
+/**Size for data log command*/
+#define SZ_CMD_LON            3      
+/**Size for data log command*/
+#define SZ_CMD_LOFF           4              
 
 
 
 #define THERMISTORNOMINAL 0x2710
 #define BCOEFFICIENT 0xF6E
 #define TEMPERATURENOMINAL 0x19
+
+
+
+
 /**Incude header files here*/
 #include <SoftI2CMaster.h>
 
@@ -162,6 +174,8 @@ const char cmd_key[SZ_CMD_KEY]        =  "key:FF";
 const char cmd_rhg[SZ_CMD_RHG]        =  "rhg:F0";
 const char cmd_von[SZ_CMD_VON]        =  "von";
 const char cmd_voff[SZ_CMD_VOFF]      =  "voff";
+const char cmd_lon[SZ_CMD_LON]        =  "lon";
+const char cmd_loff[SZ_CMD_LOFF]      =  "loff";
 
 
 
@@ -191,9 +205,12 @@ unsigned long keyrhgpreviousmilis = 0;
 unsigned long ocscerval = 0;
 unsigned long ocscpreviousmilis = 0;
 
+unsigned long ocderval = 5000;
+unsigned long ocdpreviousmilis = 0;
+
 uint16_t celldiff = 0x0000;
 
-uint8_t vbstat = 0x00;
+uint8_t vbstat = 0x00,lstat = 0x00;
 
 uint16_t tempmap[86] =
 {
@@ -214,11 +231,23 @@ uint16_t tempmap[86] =
 /**Interrupt service routine*/
 ISR(PCINT1_vect)
 {
+  if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
+    {
+      
+      TU_putHex(0x00);
+      _delay_ms(1000);
+      return;
+    }
+    /**Read system status*/
+    i2c_write(SYS_STAT);
+    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
+    afe_isr_reg[127] = i2c_read(true);
+    i2c_stop();
+
+    
   /**Clear CC_READY bit in system status register*/
   i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0xFF);
   isr_count++;
-  //TU_send('A');
-  //ck_in();
 }
 
 
@@ -232,13 +261,21 @@ void setup()
   
   i2c_initz();
 
+  
+  //USART_Init(19200);
   USART_Init(9600);
   
   afe_initz();
 
   init_PCI();
 
-    
+  cli();
+  cvmaxmin();
+  db();
+  bsbi();
+  bscv();
+  sei();
+  i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0xFF);
 }
 
 
@@ -250,7 +287,6 @@ void setup()
                                                                                                 {
                                                                                                    if(isr_count > 3)
                                                                                                     {
-                                                                                                      
                                                                                                       cli();
                                                                                                       cvmaxmin();
                                                                                                       db();
@@ -259,6 +295,10 @@ void setup()
                                                                                                       trip();
                                                                                                       rel();
                                                                                                       isr_count=0;
+                                                                                                      
+                                                                                                      if(lstat == 0x40)
+                                                                                                      loga();
+                                                                                                      
                                                                                                       sei();
                                                                                                       i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0xFF);
                                                                                                     }
@@ -273,24 +313,9 @@ void setup()
                                                                                                     {
                                                                                                       chk_key_act();
                                                                                                     } 
-                                                                                                }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                                                                             
+    }
+                                                                                              
 
 
 
@@ -1264,6 +1289,23 @@ void db_log(void)
 
 
 
+void loga(void)
+{
+  for(volatile int g=0; g<144; g++)
+  {
+    TU_putHex(afe_isr_reg[g]);
+    if(g > 142)
+    { 
+      TU_send('\r');
+      TU_send('\n');
+    }
+    
+    else
+    TU_send(':');
+  }
+}
+
+
 
 
 
@@ -1844,6 +1886,20 @@ void configwr(void)
           eeprom_write_byte(0x2F, afe_isr_reg[107]);
           TU_putHex(0xFF);
           break;
+
+
+
+          case 0x96 :
+          h=0;
+          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
+          i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, h);
+          break;
+
+          case 0x8A :
+          h=0;
+          h = (str2hex(comm_ptr_next[6])<<4) | (str2hex(comm_ptr_next[7]) & 0xff);
+          i2c_WriteWithCRC(I2C_7BITADDR, PROTECT1, h);
+          break;
        }
       }
 
@@ -2076,6 +2132,22 @@ void configwr(void)
           TU_putHex(afe_isr_reg[139]);
           TU_putHex(afe_isr_reg[140]);
           break;
+
+          case 0x8A :
+          if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
+          {
+            
+            TU_putHex(0x00);
+            _delay_ms(1000);
+            return;
+          }
+          /**Read system status*/
+          i2c_write(PROTECT1);
+          i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
+          TU_putHex(i2c_read(true));
+          i2c_stop(); 
+          break;
+          
        }
       }
 
@@ -2284,6 +2356,20 @@ uint8_t BL_Process(uint8_t serial_cmd)
       break;
     }
 
+    if(serial_cmd == COMM_CMD_LOFF)
+    {
+      lstat = 0x00;
+      TU_putHex(0xFF);
+      break;
+    }
+
+    if(serial_cmd == COMM_CMD_LON)
+    {
+      lstat = 0x40;
+      TU_putHex(0xFF);
+      break;
+    }
+
   }while(0);
 
   return 0;
@@ -2387,6 +2473,20 @@ uint8_t process(void)
       break;
     }
 
+    if(strncmp(cmd_loff, comm_buffer, SZ_CMD_LOFF) == 0)
+    {
+      
+      ret = COMM_CMD_LOFF;
+      break;
+    }
+
+     if(strncmp(cmd_lon, comm_buffer, SZ_CMD_LON) == 0)
+    {
+      
+      ret = COMM_CMD_LON;
+      break;
+    }
+
   }while(0);
 
   // Return the Final Command after processing
@@ -2468,28 +2568,47 @@ uint16_t merge_16(uint8_t h_16, uint8_t l_16)
 void trip(void)
 {
 
-  if (!i2c_start_wait((I2C_7BITADDR<<1)|I2C_WRITE))
+  if((afe_isr_reg[127] & 0x7F) > 0)
     {
-      
-      TU_putHex(0x00);
-      _delay_ms(1000);
-      return;
-    }
+      /**Short circuit in discharging*/
+      if((afe_isr_reg[127]&0x02) == 0x02)
+      {
+        afe_isr_reg[1] |= (1<<0);
+        verb_print(0x0019);
 
-    i2c_write(SYS_STAT);  
-    i2c_rep_start((I2C_7BITADDR<<1)|I2C_READ);
-    uint8_t dvready = i2c_read(true);
-    i2c_stop();
-    if(dvready & 0x20)
-    {
-      verb_print(0x0001);
-      _delay_ms(1000);
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x20);  
-    }
+        /**store pack max current at which short circuit fault occured*/
+        afe_isr_reg[31] = afe_isr_reg[4];
+        afe_isr_reg[32] = afe_isr_reg[5];
 
-    
+        eeprom_update_byte(0x01, afe_isr_reg[1]);
+        eeprom_update_byte(0x56, afe_isr_reg[31]);
+        eeprom_update_byte(0x57, afe_isr_reg[32]);
+
+        if(afe_isr_reg[68] == 0xFF)
+        {
+          afe_isr_reg[67] += 1;
+          afe_isr_reg[68] = 0x00;  
+        }
+        
+        else
+        afe_isr_reg[68] += 1;
+
+        eeprom_update_byte(0x28, afe_isr_reg[67]);
+        eeprom_update_byte(0x29, afe_isr_reg[68]);
+      }
+
+      /**Over current in discharging*/
+      if((afe_isr_reg[127]&0x02) == 0x01)
+      {
+        afe_isr_reg[1] |= (1<<1);
+        verb_print(0x001B);
+      }
+    }    
   /**cell over voltage fault*/
-if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88]))) && (!(afe_isr_reg[0] & 0x80)) && (rhgtog = 0x00))
+  
+if( (!(afe_isr_reg[0] & 0x80)) && (rhgtog == 0x00) )
+{
+if((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])))
   {
     i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x42); 
     afe_isr_reg[0] |= (1<<7); 
@@ -2497,7 +2616,7 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
     /**Cell max voltage at which fault occured*/
     afe_isr_reg[17] = (cmax&0xFF00)>>7;
     afe_isr_reg[18] = cmax&0x00FF;
-    
+    TU_putHexW(cmax);
     eeprom_update_byte(0x00, afe_isr_reg[0]);
     eeprom_update_byte(0x48, afe_isr_reg[17]);
     eeprom_update_byte(0x49, afe_isr_reg[18]);
@@ -2516,6 +2635,7 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
     verb_print(0x0009);
     keytog = 0x00;
   }
+}
 
   /**cell under voltage fault*/
   if(((afe_isr_reg[127]&0x08) || (cmin < merge_16(afe_isr_reg[85],afe_isr_reg[86]))) && !(afe_isr_reg[0] & 0x40))
@@ -2555,13 +2675,13 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
       afe_isr_reg[0] |= (1 << 5); 
 
 
-       /**Pack overvoltage at which fault occured*/
-      afe_isr_reg[21] = afe_isr_reg[2];
-      afe_isr_reg[22] = afe_isr_reg[3];
-      
-      eeprom_update_byte(0x00, afe_isr_reg[0]);
-      eeprom_update_byte(0x4C, afe_isr_reg[21]);
-      eeprom_update_byte(0x4D, afe_isr_reg[22]);
+     /**Pack overvoltage at which fault occured*/
+    afe_isr_reg[21] = afe_isr_reg[2];
+    afe_isr_reg[22] = afe_isr_reg[3];
+    
+    eeprom_update_byte(0x00, afe_isr_reg[0]);
+    eeprom_update_byte(0x4C, afe_isr_reg[21]);
+    eeprom_update_byte(0x4D, afe_isr_reg[22]);
       
 
       if(afe_isr_reg[78] == 0xFF)
@@ -2611,6 +2731,9 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
  {
     if(merge_16(afe_isr_reg[4],afe_isr_reg[5]) > merge_16(afe_isr_reg[93],afe_isr_reg[94]))
     {
+      if(millis() - ocdpreviousmilis >= ocderval)
+      {
+        ocdpreviousmilis = millis();
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x42);
       TU_putHexW(0x0002);
       keytog = 0x00;
@@ -2622,7 +2745,7 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       eeprom_update_byte(0x52, afe_isr_reg[27]);
       eeprom_update_byte(0x53, afe_isr_reg[28]);
-
+      
       if(afe_isr_reg[70] == 0xFF)
       {
         afe_isr_reg[69] += 1;
@@ -2635,14 +2758,21 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
       verb_print(0x000D);
       ocscpreviousmilis = millis();
     }
+    }
+    
  }
 
 
    /**over current in discharging fault*/
-  if((merge_16(afe_isr_reg[4],afe_isr_reg[5])& 0x8000) && !(afe_isr_reg[4] & 0x01))
+  //if((merge_16(afe_isr_reg[4],afe_isr_reg[5])& 0x8000) && !(afe_isr_reg[4] & 0x01))
+  if((afe_isr_reg[4]&0x80) > 0)
   {
+    
     if(merge_16(afe_isr_reg[4],afe_isr_reg[5]) < merge_16(afe_isr_reg[95],afe_isr_reg[96]))
       {
+         if(millis() - ocdpreviousmilis >= ocderval)
+      {
+        ocdpreviousmilis = millis();
         i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x41);
         //afe_isr_reg[10] = 0x01;
         keytog = 0x00;
@@ -2667,14 +2797,16 @@ if(((afe_isr_reg[127]&0x04) || (cmax > merge_16(afe_isr_reg[87],afe_isr_reg[88])
         verb_print(0x000E);
         ocscpreviousmilis = millis();
       }
+      }
       
-      if((rhgtog == 0x40) && (merge_16(afe_isr_reg[4],afe_isr_reg[5]) < merge_16(0xFF,0xF4)))
+      //TU_putHex(rhgtog);
+      if(  (rhgtog == 0x40) && (merge_16(afe_isr_reg[4],afe_isr_reg[5]) < 0xFFED) )
       {
         i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x41);
         verb_print(0x0006);
-        //afe_isr_reg[10] = 0x01;
         rhgtog = 0x00;
       }
+      
   }
       
 
@@ -2745,15 +2877,18 @@ void rel(void)
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x04);
       verb_print(0x0008); 
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      keytog = 0x40;
+      
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
+      keytog = 0x40;}
     }
   }
 
 
 
   /**cell undervoltage release*/
-  if(afe_isr_reg[0] & 0x40)
+  if((afe_isr_reg[0] & 0x40))
   {
     if(cmin > merge_16(afe_isr_reg[99],afe_isr_reg[100]))
     {
@@ -2761,10 +2896,13 @@ void rel(void)
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_STAT, 0x08); 
       verb_print(0x0007); 
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
       keytog = 0x40;
       rhgtog = 0x00;
-      afe_isr_reg[9] = 0x0F;
+      afe_isr_reg[9] = 0x0F;}
     }
   }
 
@@ -2777,8 +2915,11 @@ void rel(void)
       afe_isr_reg[0]   &= ~(1<<5); 
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       verb_print(0x0011);
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      keytog = 0x40;
+      
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+     { i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
+      keytog = 0x40;}
     }
   }
 
@@ -2790,10 +2931,12 @@ void rel(void)
       afe_isr_reg[0] &= ~(1<<4);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       verb_print(0x0012);
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00){
       i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
       keytog = 0x40;
       rhgtog = 0x00;
-      afe_isr_reg[9] = 0x0F;
+      afe_isr_reg[9] = 0x0F;}
     }
   }
 
@@ -2807,8 +2950,12 @@ void rel(void)
       afe_isr_reg[0] &= ~(1<<1);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       verb_print(0x0013);
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      keytog = 0x40;
+      
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+
+      
+      keytog = 0x40;}
     }
   }
 
@@ -2820,8 +2967,11 @@ void rel(void)
       afe_isr_reg[0] &= ~(1<<3);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       verb_print(0x0014);
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      keytog = 0x40;
+
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      
+      keytog = 0x40;}
     }
   }
 
@@ -2834,10 +2984,38 @@ void rel(void)
       afe_isr_reg[0] &= ~(1<<2);
       eeprom_update_byte(0x00, afe_isr_reg[0]);
       verb_print(0x0015);
-      i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
-      keytog = 0x40;
+
+      if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      keytog = 0x40;}
     }
   }
+
+
+  /**Short circuit fault released*/
+  if((afe_isr_reg[1] & 0x01))
+  {
+    afe_isr_reg[1] &= ~(1<<0);
+    eeprom_update_byte(0x01, afe_isr_reg[1]);
+    verb_print(0x001A);
+    if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      keytog = 0x40;}
+  }
+
+
+  /**overcurrent in  fault released*/
+  if((afe_isr_reg[1] & 0x02))
+  {
+    afe_isr_reg[1] &= ~(1<<1);
+    eeprom_update_byte(0x01, afe_isr_reg[1]);
+    verb_print(0x001C);
+    if(afe_isr_reg[0]+afe_isr_reg[1] == 0x00)
+      {i2c_WriteWithCRC(I2C_7BITADDR, SYS_CTRL2, 0x43);
+      keytog = 0x40;}
+  }
+
+  
 }
 
 
@@ -2942,6 +3120,8 @@ void chk_key_act(void)
       keytog = 0x00;
       verb_print(0x0003);
     }
+    else
+    keyrhgpreviousmilis = millis();
 
 
     if(merge_16(afe_isr_reg[4],afe_isr_reg[5]) >= 0xFFE8)
@@ -2960,7 +3140,7 @@ void verb_print(uint16_t code)
   if(vbstat == 0x40)
   {
     TU_putHexW(code);
-  }  
+  }
 }
 
 
